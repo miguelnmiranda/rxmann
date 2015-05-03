@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+
+var debug = require('debug')('riepmann');
+var EventEmitter = require('events').EventEmitter;
+var rx = require('rx');
+
+var config = require('./../config/config.js');
+var index = require('./../src/core/index.js');
+
+// Used to bridge from nodejs to rx streams
+var inputEmitter = new EventEmitter();
+var queryEmitter = new EventEmitter();
+
+// Core Streams
+var inputEventStream = rx.Observable.fromEvent(inputEmitter, 'event');
+var inputBatchStream = rx.Observable.fromEvent(inputEmitter, 'batch').flatMap(function(batch){return batch;});
+var inputStream = rx.Observable.merge(inputEventStream, inputBatchStream);
+
+var queryEventStream = rx.Observable.fromEvent(queryEmitter, 'event');
+var queryBatchStream = rx.Observable.fromEvent(queryEmitter, 'batch').flatMap(function(batch){return batch;});
+var queryStream = rx.Observable.merge(queryEventStream, queryBatchStream);
+
+// TODO: validate events in input stream and remove ...
+
+// Load configuration
+var indexStream = config(inputStream);
+
+// Populate index
+index(indexStream, queryEmitter);
+
+// create and connect input
+var udp = require('./../src/input/riemann-udp.js');
+udp(5555, "udp4", inputEmitter);
+
+// create and connect query
+var ws = require('./../src/query/riemann-ws.js');
+ws(queryStream);
